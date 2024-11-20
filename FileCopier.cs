@@ -134,6 +134,7 @@ namespace SysProgExam
             {
                 try
                 {
+                    //попытка установить нормальные атрибуты, чтобы можно было удалить файл (неудачная)
                     File.SetAttributes(file, FileAttributes.Normal);
                     File.Delete(file);
                 }
@@ -151,7 +152,8 @@ namespace SysProgExam
                     string destFile = Path.Combine(destinationDirectory, Path.GetFileName(file));
                     if (File.Exists(destFile))
                     {
-                        File.SetAttributes(file, FileAttributes.Normal);
+                        //попытка установить нормальные атрибуты, чтобы можно было удалить файл (неудачная)
+                        File.SetAttributes(file, FileAttributes.Normal); 
                         File.Delete(destFile);
                     }
                     
