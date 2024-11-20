@@ -13,6 +13,7 @@ namespace SysProgExam
         private string sourceDirectory;
         private string destinationDirectory;
         private int workerCount;
+        private Task[] workerTasks;
         private FrmSPExam form;
 
         private long totalBytes;
@@ -26,22 +27,12 @@ namespace SysProgExam
             fileQueue = new BlockingCollection<string>();
             this.form = form;
             workerCount = 4;
+            workerTasks = new Task[workerCount];
         }
 
 
         public async Task Start()
         {
-
-
-            Task[] workerTasks = new Task[workerCount];
-            for (int i = 0; i < workerCount; i++)
-            {
-                int index = i;
-                workerTasks[index] = Task.Run(() => 
-                CopyFiles(form.fileNames[index], form.copyProgresses[index], 
-                             form.ProgressBars[index]));
-            }
-
             foreach (var file in Directory.GetFiles(sourceDirectory))
             {
                 FileInfo fileInfo = new FileInfo(file);
@@ -49,24 +40,28 @@ namespace SysProgExam
             }
             form.SetMaxTotalProgressBar(totalBytes);
 
+            
+            for (int i = 0; i < workerCount; i++)
+            {
+                int index = i;
+                workerTasks[index] = Task.Run(async () =>
+                {
+                    await CopyFiles(form.fileNames[index], form.copyProgresses[index], form.ProgressBars[index]);
+                });
+            }
 
-
+            
 
             foreach (var file in Directory.GetFiles(sourceDirectory))
                 fileQueue.Add(file);
 
-            fileQueue.CompleteAdding(); //указание, что более элементов не добавится
-            
-            await Task.WhenAll(workerTasks);//ожидание завершения всех задач без
-                                            //блокировки основного потока
+            fileQueue.CompleteAdding();
+
+            await Task.WhenAll(workerTasks);
 
             form.ShowMessage("Копирование завершено", Color.Green);
-
         }
-
-
-
-        private void CopyFiles(Label lblName, Label lblSize, ProgressBar pbCopy)
+        private async Task CopyFiles(Label lblName, Label lblSize, ProgressBar pbCopy)
         {
             long totalBytesCopied = 0;
             foreach (var file in fileQueue.GetConsumingEnumerable())
@@ -84,19 +79,19 @@ namespace SysProgExam
                     {
                         using (FileStream toStream = new FileStream(destFile, FileMode.Create))
                         {
-                            byte[] buffer = new byte[1024 * 256];
+                            byte[] buffer = new byte[1024 * 32];
                             int bytesRead;
                             long bytesCopied = 0;
-                            while ((bytesRead = fromStream.Read(buffer, 0, buffer.Length)) > 0)
+                            while ((bytesRead = await fromStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                             {
-                                toStream.Write(buffer, 0, bytesRead);
+                                await toStream.WriteAsync(buffer, 0, bytesRead);
                                 bytesCopied += bytesRead;
                                 pbCopy.Value = (int)bytesCopied;
                                 lock (this) totalBytesCopied += bytesRead;
                                 form.SetTotalProgressBar(totalBytesCopied);
                                 form.SetLblCopyProgressTotal(totalBytesCopied, totalBytes);
-                                Thread.Sleep(1); 
-                                lblSize.Text = string.Format($"{bytesCopied} / {totalBytes} Б");
+                                await Task.Yield();
+                                form.Invoke (() => lblSize.Text = string.Format($"{bytesCopied} / {totalBytes} Б"));
 
                             }
                         }
@@ -107,6 +102,47 @@ namespace SysProgExam
                     form.ShowMessage(ex.Message, Color.Red);
                 }
             }
+        }
+        public void AbortCopy()
+        {
+            //удалить файлы из целевой директории
+            foreach (var file in Directory.GetFiles(destinationDirectory))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception ex)
+                {
+                    form.ShowMessage($"Ошибка при удалении файла {file}: {ex.Message}", Color.Red);
+                }
+            }
+
+            //прервать выполнение всех задач
+            foreach (var task in workerTasks)
+            {
+                task.Dispose();
+            }
+
+            //Удалить недокопированные файлы
+            foreach (var file in fileQueue.GetConsumingEnumerable())//извлечь и удалить
+            {
+                try
+                {
+                    string destFile = Path.Combine(destinationDirectory, Path.GetFileName(file));
+                    if (File.Exists(destFile))                    
+                        File.Delete(destFile);
+                    
+                }
+                catch (Exception ex)
+                {
+                    form.ShowMessage($"Error deleting file {file}: {ex.Message}", Color.Red);
+                }
+            }
+
+            // переинициализация очереди и тасков для безопасности следующего использования
+            fileQueue = new BlockingCollection<string>();
+            workerTasks = new Task[workerCount];
         }
 
 

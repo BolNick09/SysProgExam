@@ -75,7 +75,7 @@
             // lblMsg
             // 
             lblMsg.AutoSize = true;
-            lblMsg.Location = new Point(12, 5);
+            lblMsg.Location = new Point(10, 4);
             lblMsg.Name = "lblMsg";
             lblMsg.Size = new Size(50, 20);
             lblMsg.TabIndex = 0;

@@ -27,6 +27,8 @@ namespace SysProgExam
             ProgressBars.Add(pbCopy2);
             ProgressBars.Add(pbCopy3);
             ProgressBars.Add(pbCopy4);
+
+            lblClear();
         }
 
         public void ShowMessage(string message, Color color)
@@ -49,9 +51,66 @@ namespace SysProgExam
             pbCopyTotal.Maximum = (int)totalBytes;
         }
 
+        private void lblClear()
+        {
+            lblMsg.Text = string.Empty;
+
+            lblCopyProgress1.Text = "Прогресс файла 1";
+            lblCopyProgress2.Text = "Прогресс файла 2";
+            lblCopyProgress3.Text = "Прогресс файла 3";
+            lblCopyProgress4.Text = "Прогресс файла 4";
+            lblCopyProgressTotal.Text = "Общий прогресс";
+
+            lblFileName1.Text = "Имя файла 1";
+            lblFileName2.Text = "Имя файла 2";
+            lblFileName3.Text = "Имя файла 3";
+            lblFileName4.Text = "Имя файла 4";
+        }
+
+        private bool HasWriteAccess(string directoryPath)
+        {
+            try
+            {
+                using (FileStream fs = File.Create(Path.Combine(directoryPath, Path.GetRandomFileName()), 1, FileOptions.DeleteOnClose)) { }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private async void btnCopy_Click(object sender, EventArgs e)
         {
-            FileCopier fileCopier = new FileCopier(tbFromDir.Text, tbToDir.Text, this);
+            lblClear();
+            string sourceDir = tbFromDir.Text;
+            string destDir = tbToDir.Text;
+            if (string.IsNullOrEmpty(sourceDir))
+            {
+                ShowMessage("Не выбрана директория-источник", Color.YellowGreen);
+                return;
+            }
+            if (string.IsNullOrEmpty(destDir))
+            {
+                ShowMessage("Не выбрана директория-назначение", Color.YellowGreen);
+                return;
+            }
+            if (!Directory.Exists(sourceDir))
+            {
+                ShowMessage("Директория-источник не существует", Color.Red);
+                return;
+            }
+            if (!Directory.Exists(destDir))
+            {
+                ShowMessage("Директория-назначение не существует", Color.Red);
+                return;
+            }
+            if (!HasWriteAccess(destDir))
+            {
+                ShowMessage("Отсутсвуют права на запись в эту директорию", Color.Red);
+                return;
+            }
+            FileCopier fileCopier = new FileCopier(sourceDir, destDir, this);
             await fileCopier.Start();            
         }
 
