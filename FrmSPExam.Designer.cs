@@ -102,6 +102,7 @@
             btnCancel.TabIndex = 3;
             btnCancel.Text = "Отменить";
             btnCancel.UseVisualStyleBackColor = true;
+            btnCancel.Click += btnCancel_Click;
             // 
             // btnCopy
             // 

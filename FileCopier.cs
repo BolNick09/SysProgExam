@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SysProgExam
@@ -15,9 +16,12 @@ namespace SysProgExam
         private int workerCount;
         private Task[] workerTasks;
         private FrmSPExam form;
-
-        private long totalBytes;
         
+        private long totalFileBytes;
+        private long totalBytesCopied;
+
+        private CancellationTokenSource cancellationTokenSource;
+
 
         public FileCopier(string sourceDirectory, string destinationDirectory, FrmSPExam form)
         {
@@ -28,6 +32,9 @@ namespace SysProgExam
             this.form = form;
             workerCount = 4;
             workerTasks = new Task[workerCount];
+
+            totalBytesCopied = 0;
+            cancellationTokenSource = new CancellationTokenSource();
         }
 
 
@@ -36,93 +43,105 @@ namespace SysProgExam
             foreach (var file in Directory.GetFiles(sourceDirectory))
             {
                 FileInfo fileInfo = new FileInfo(file);
-                totalBytes += fileInfo.Length;
+                totalFileBytes += fileInfo.Length;
             }
-            form.SetMaxTotalProgressBar(totalBytes);
+            form.SetMaxTotalProgressBar(totalFileBytes);
 
-            
+
             for (int i = 0; i < workerCount; i++)
             {
                 int index = i;
                 workerTasks[index] = Task.Run(async () =>
                 {
-                    await CopyFiles(form.fileNames[index], form.copyProgresses[index], form.ProgressBars[index]);
+                    await CopyFiles(form.fileNames[index], form.copyProgresses[index], form.ProgressBars[index], cancellationTokenSource.Token);
                 });
             }
 
-            
+
 
             foreach (var file in Directory.GetFiles(sourceDirectory))
                 fileQueue.Add(file);
 
             fileQueue.CompleteAdding();
 
-            await Task.WhenAll(workerTasks);
+            await Task.WhenAll(workerTasks);            
 
-            form.ShowMessage("Копирование завершено", Color.Green);
+            form.Invoke(() =>
+            {
+                if (cancellationTokenSource.IsCancellationRequested)
+                    form.ShowMessage("Копирование завершено", Color.Green);
+                else
+                    form.ShowMessage("Копирование отменено пользователем", Color.YellowGreen);
+            });
         }
-        private async Task CopyFiles(Label lblName, Label lblSize, ProgressBar pbCopy)
+        private async Task CopyFiles(Label lblName, Label lblSize, ProgressBar pbCopy, CancellationToken cancellationToken)
         {
-            long totalBytesCopied = 0;
+            
             foreach (var file in fileQueue.GetConsumingEnumerable())
             {
                 try
                 {
                     string destFile = Path.Combine(destinationDirectory, Path.GetFileName(file));
-                    FileInfo fileInfo = new FileInfo(file);                   
-                    lblName.Text = Path.GetFileName(file);
+                    FileInfo fileInfo = new FileInfo(file);
+                    form.Invoke(() => lblName.Text = Path.GetFileName(file));
                     long totalBytes = fileInfo.Length;
-                    pbCopy.Minimum = 0;
-                    pbCopy.Maximum = (int)totalBytes;
-                    pbCopy.Value = 0;
-                    using (FileStream fromStream = new FileStream(file, FileMode.Open))
-                    {
-                        using (FileStream toStream = new FileStream(destFile, FileMode.Create))
-                        {
-                            byte[] buffer = new byte[1024 * 32];
-                            int bytesRead;
-                            long bytesCopied = 0;
-                            while ((bytesRead = await fromStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                            {
-                                await toStream.WriteAsync(buffer, 0, bytesRead);
-                                bytesCopied += bytesRead;
-                                pbCopy.Value = (int)bytesCopied;
-                                lock (this) totalBytesCopied += bytesRead;
-                                form.SetTotalProgressBar(totalBytesCopied);
-                                form.SetLblCopyProgressTotal(totalBytesCopied, totalBytes);
-                                await Task.Yield();
-                                form.Invoke (() => lblSize.Text = string.Format($"{bytesCopied} / {totalBytes} Б"));
+                    form.Invoke(() => pbCopy.Minimum = 0);
+                    form.Invoke(() => pbCopy.Maximum = (int)totalBytes);
+                    form.Invoke(() => pbCopy.Value = 0);
 
-                            }
-                        }
+                    using var fromStream = new FileStream(file, FileMode.Open);
+                    using var toStream = new FileStream(destFile, FileMode.Create);
+
+                    byte[] buffer = new byte[1024 * 512];
+                    int bytesRead;
+                    long bytesCopied = 0;
+
+                    while ((bytesRead = await fromStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                            return;
+                        await toStream.WriteAsync(buffer, 0, bytesRead);
+                        bytesCopied += bytesRead;
+                        form.Invoke(() => pbCopy.Value = (int)bytesCopied);
+                        lock (this) totalBytesCopied += bytesRead;
+                        form.Invoke(() => form.SetTotalProgressBar(totalBytesCopied));
+                        form.Invoke(() => form.SetLblCopyProgressTotal(totalBytesCopied, totalFileBytes));
+                        Thread.Sleep(1);
+                        //await Task.Yield();
+                        form.Invoke(() => lblSize.Text = string.Format($"{bytesCopied} / {totalBytes} Б"));
                     }
+                    
+                    
                 }
                 catch (Exception ex)
                 {
                     form.ShowMessage(ex.Message, Color.Red);
+                    AbortCopy();
+                    return;
                 }
             }
         }
         public void AbortCopy()
         {
+            //прервать выполнение всех задач
+            foreach (var task in workerTasks)
+            {
+                if (task.Status == TaskStatus.Running)
+                    task.Dispose();
+            }
             //удалить файлы из целевой директории
             foreach (var file in Directory.GetFiles(destinationDirectory))
             {
                 try
                 {
+                    File.SetAttributes(file, FileAttributes.Normal);
                     File.Delete(file);
                 }
                 catch (Exception ex)
                 {
                     form.ShowMessage($"Ошибка при удалении файла {file}: {ex.Message}", Color.Red);
                 }
-            }
-
-            //прервать выполнение всех задач
-            foreach (var task in workerTasks)
-            {
-                task.Dispose();
-            }
+            }           
 
             //Удалить недокопированные файлы
             foreach (var file in fileQueue.GetConsumingEnumerable())//извлечь и удалить
@@ -130,19 +149,28 @@ namespace SysProgExam
                 try
                 {
                     string destFile = Path.Combine(destinationDirectory, Path.GetFileName(file));
-                    if (File.Exists(destFile))                    
+                    if (File.Exists(destFile))
+                    {
+                        File.SetAttributes(file, FileAttributes.Normal);
                         File.Delete(destFile);
+                    }
                     
                 }
                 catch (Exception ex)
                 {
-                    form.ShowMessage($"Error deleting file {file}: {ex.Message}", Color.Red);
+                    form.ShowMessage($"Ошибка при удалении файла {file}: {ex.Message}", Color.Red);
                 }
             }
 
             // переинициализация очереди и тасков для безопасности следующего использования
             fileQueue = new BlockingCollection<string>();
             workerTasks = new Task[workerCount];
+        }
+        public void manualStop()
+        {
+            cancellationTokenSource.Cancel();
+            AbortCopy();
+            form.ShowMessage("Копирование преравно", Color.YellowGreen);
         }
 
 

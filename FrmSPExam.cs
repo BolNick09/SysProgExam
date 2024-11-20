@@ -7,6 +7,8 @@ namespace SysProgExam
         public List<Label> copyProgresses;
         public List<ProgressBar> ProgressBars;
 
+        FileCopier fileCopier;
+
         public FrmSPExam()
         {
             InitializeComponent();
@@ -29,6 +31,7 @@ namespace SysProgExam
             ProgressBars.Add(pbCopy4);
 
             lblClear();
+            
         }
 
         public void ShowMessage(string message, Color color)
@@ -110,8 +113,8 @@ namespace SysProgExam
                 ShowMessage("Отсутсвуют права на запись в эту директорию", Color.Red);
                 return;
             }
-            FileCopier fileCopier = new FileCopier(sourceDir, destDir, this);
-            await fileCopier.Start();            
+            fileCopier = new FileCopier(sourceDir, destDir, this);
+            await fileCopier.Start();
         }
 
         private void btnFromDir_Click(object sender, EventArgs e)
@@ -126,6 +129,12 @@ namespace SysProgExam
             FolderBrowserDialog fbd = new FolderBrowserDialog();
             if (fbd.ShowDialog() == DialogResult.OK)
                 tbToDir.Text = fbd.SelectedPath;
+        }
+
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            if (fileCopier != null)
+                fileCopier.manualStop();
         }
     }
 }
