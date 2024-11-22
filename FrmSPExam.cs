@@ -12,23 +12,17 @@ namespace SysProgExam
         public FrmSPExam()
         {
             InitializeComponent();
-            fileNames = new List<Label>();
-            fileNames.Add(lblFileName1);
-            fileNames.Add(lblFileName2);
-            fileNames.Add(lblFileName3);
-            fileNames.Add(lblFileName4);
+            fileNames = [lblFileName1, lblFileName2, lblFileName3, lblFileName4];
 
-            copyProgresses = new List<Label>();
-            copyProgresses.Add(lblCopyProgress1);
-            copyProgresses.Add(lblCopyProgress2);
-            copyProgresses.Add(lblCopyProgress3);
-            copyProgresses.Add(lblCopyProgress4);
+            copyProgresses =
+            [
+                lblCopyProgress1,
+                lblCopyProgress2,
+                lblCopyProgress3,
+                lblCopyProgress4,
+            ];
 
-            ProgressBars = new List<ProgressBar>();
-            ProgressBars.Add(pbCopy1);
-            ProgressBars.Add(pbCopy2);
-            ProgressBars.Add(pbCopy3);
-            ProgressBars.Add(pbCopy4);
+            ProgressBars = [pbCopy1, pbCopy2, pbCopy3, pbCopy4];
 
             lblClear();
             

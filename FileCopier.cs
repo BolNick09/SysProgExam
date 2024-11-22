@@ -55,6 +55,9 @@ namespace SysProgExam
                 {
                     await CopyFiles(form.fileNames[index], form.copyProgresses[index], form.ProgressBars[index], cancellationTokenSource.Token);
                 });
+
+                //строка ниже виснет
+                //workerTasks[index] = CopyFiles(form.fileNames[index], form.copyProgresses[index], form.ProgressBars[index], cancellationTokenSource.Token);
             }
 
             foreach (var file in Directory.GetFiles(sourceDirectory))
@@ -125,15 +128,18 @@ namespace SysProgExam
 
             }
         }
-        public void AbortCopy()
+        public async void AbortCopy()
         {
             //прервать выполнение всех задач
-            foreach (var task in workerTasks)
-            {
-                if (task.Status == TaskStatus.Running)
-                    task.Dispose();
-            }
-            
+            //foreach (var task in workerTasks)
+            //{
+            //    if (task.Status == TaskStatus.Running)
+            //        task.Dispose();
+            //}
+
+            cancellationTokenSource.Cancel();
+            await Task.WhenAll(workerTasks);
+
             //удалить файлы из целевой директории
             foreach (var file in Directory.GetFiles(destinationDirectory))
             {
@@ -153,10 +159,8 @@ namespace SysProgExam
                 try
                 {
                     string destFile = Path.Combine(destinationDirectory, Path.GetFileName(file));
-                    if (File.Exists(destFile))
-                    {                        
-                        File.Delete(destFile);
-                    }
+                    if (File.Exists(destFile))                                            
+                        File.Delete(destFile);                    
                     
                 }
                 catch (Exception ex)
@@ -171,8 +175,7 @@ namespace SysProgExam
         }
         public async void manualStop()
         {
-            cancellationTokenSource.Cancel();
-            await Task.WhenAll(workerTasks);
+            
             AbortCopy();
             form.ShowMessage("Копирование преравно", Color.YellowGreen);
         }
